@@ -4,7 +4,7 @@ import streamlit as st
 from services.lectores import consolidar_conglomerado, consolidar_revision
 from services.conciliacion import agregar_estado, aplicar_filtros
 from services.exportador import exportar_excel
-from utils import formatear_segundos
+from utils import formatear_segundos, encontrar_columna
 
 st.set_page_config(
     page_title="Conciliación de transferencias",
@@ -27,11 +27,76 @@ st.markdown("""
     .stButton button, .stDownloadButton button {
         border-radius: 12px !important;
         font-weight: 600 !important;
+        padding: 0.6rem 1.2rem !important;
+        font-size: 0.95rem !important;
+        margin-top: 0.4rem !important;
+    }
+    .back-button .stButton button {
+        margin-top: 1.2rem !important;
+    }
+    .landing-buttons .stButton button {
+        padding: 1.4rem 2.2rem !important;
+        font-size: 1.2rem !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("Procesar documentos para conciliación de transferencias emitidas (RECIBIDAS)")
+
+if "pantalla" not in st.session_state:
+    st.session_state.pantalla = "landing"
+
+
+if st.session_state.pantalla == "landing":
+    st.title("Conciliación de Transferencias Inmediatas")
+    st.caption("Selecciona el tipo de conciliación que quieres realizar.")
+
+    st.markdown('<div class="landing-buttons">', unsafe_allow_html=True)
+    c1, c2 = st.columns(2)
+    with c1:
+        if st.button("📥 Transferencias Inmediatas Recibidas", type="primary", width="stretch"):
+            st.session_state.pantalla = "recibidas"
+            st.session_state.detener_proceso = False
+            st.session_state.procesando = False
+            st.rerun()
+
+    with c2:
+        if st.button("📤 Transferencias Inmediatas Emitidas", width="stretch"):
+            st.session_state.pantalla = "emitidas"
+            st.session_state.detener_proceso = False
+            st.session_state.procesando = False
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.stop()
+
+
+if st.session_state.pantalla == "emitidas":
+    st.title("Transferencias Inmediatas Emitidas")
+    st.caption("Este módulo está en construcción.")
+
+    st.markdown('<div class="back-button">', unsafe_allow_html=True)
+    if st.button("⬅ Volver"):
+        st.session_state.pantalla = "landing"
+        st.session_state.detener_proceso = False
+        st.session_state.procesando = False
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.stop()
+
+
+if st.session_state.pantalla == "recibidas":
+    st.markdown('<div class="back-button">', unsafe_allow_html=True)
+    back_col, _ = st.columns([1, 6])
+    with back_col:
+        if st.button("⬅ Volver"):
+            st.session_state.pantalla = "landing"
+            st.session_state.detener_proceso = False
+            st.session_state.procesando = False
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.title("Procesar documentos para conciliación de transferencias emitidas (RECIBIDAS)")
 st.caption("Carga archivos del conglomerado y archivos de revisión para generar el resultado filtrado.")
 
 if "detener_proceso" not in st.session_state:
@@ -90,15 +155,27 @@ if files_revision:
         for f in files_revision:
             st.write(f.name)
 
+st.subheader("3) Configuración de tipo de cuenta")
+opcion_cuentas = st.radio(
+    "Selecciona qué tipo de cuentas quieres procesar:",
+    options=[
+        "Todas las cuentas",
+        "Solo cuentas de ahorro",
+        "Solo cuentas Ohpay",
+    ],
+    index=0,
+    horizontal=True,
+)
+
 mostrar_debug = st.toggle("Mostrar panel de debug", value=False)
 
 if not st.session_state.procesando:
-    if st.button("▶ Procesar conciliación", type="primary", use_container_width=True):
+    if st.button("▶ Procesar conciliación", type="primary", width="stretch"):
         st.session_state.procesando = True
         st.session_state.detener_proceso = False
         st.rerun()
 else:
-    if st.button("⛔ Detener procesamiento", use_container_width=True):
+    if st.button("⛔ Detener procesamiento", width="stretch"):
         st.session_state.detener_proceso = True
         st.session_state.procesando = False
         st.warning("Se solicitó detener el procesamiento.")
@@ -152,6 +229,35 @@ if st.session_state.procesando:
             st.error("No se pudo generar la base de revisión.")
             st.stop()
 
+        # Filtro previo por tipo de cuenta (Ohpay / ahorro / todas)
+        try:
+            col_cuenta = encontrar_columna(df_rev, "Cuenta Beneficiaria")
+            cuentas = (
+                df_rev[col_cuenta]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+            )
+            es_ohpay = cuentas.str.startswith("41")
+
+            if opcion_cuentas == "Solo cuentas Ohpay":
+                df_rev = df_rev[es_ohpay].copy()
+            elif opcion_cuentas == "Solo cuentas de ahorro":
+                df_rev = df_rev[~es_ohpay].copy()
+
+            # Si después del filtro no queda nada, detener temprano
+            if df_rev.empty:
+                st.session_state.procesando = False
+                progress.empty()
+                status.empty()
+                eta_box.empty()
+                st.warning("No hay registros que cumplan con el filtro de tipo de cuenta seleccionado.")
+                st.stop()
+        except KeyError as e:
+            # Si no se encuentra la columna, se mantiene el comportamiento actual (procesar todo)
+            if opcion_cuentas != "Todas las cuentas":
+                st.info(f"No se encontró la columna 'Cuenta Beneficiaria' ({e}). Se procesarán todas las cuentas.")
+
         verificar_cancelacion()
         step += 1
         update_progress(progress, status, eta_box, step, total_steps, "Cruzando información", inicio)
@@ -179,14 +285,14 @@ if st.session_state.procesando:
             st.metric("Filas resultado filtrado", len(df_filtrado))
 
         st.markdown("### Vista previa del resultado filtrado")
-        st.dataframe(df_filtrado.head(50), use_container_width=True)
+        st.dataframe(df_filtrado.head(50), width="stretch")
 
         st.download_button(
             "Descargar resultado filtrado",
             excel,
             "resultado_filtrado_conciliacion.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True
+            width="stretch"
         )
 
         if mostrar_debug:
