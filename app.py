@@ -1,4 +1,7 @@
 import time
+import zipfile
+from io import BytesIO
+
 import streamlit as st
 
 from services.lectores import consolidar_conglomerado, consolidar_revision
@@ -105,6 +108,9 @@ if "detener_proceso" not in st.session_state:
 if "procesando" not in st.session_state:
     st.session_state.procesando = False
 
+if "upload_reset" not in st.session_state:
+    st.session_state.upload_reset = 0
+
 
 def verificar_cancelacion():
     if st.session_state.get("detener_proceso", False):
@@ -133,7 +139,8 @@ st.subheader("1) Subir archivos del conglomerado")
 files_conglomerado = st.file_uploader(
     "Selecciona archivos del conglomerado",
     accept_multiple_files=True,
-    type=["xlsx", "xls"]
+    type=["xlsx", "xls"],
+    key=f"upload_conglomerado_{st.session_state.upload_reset}",
 )
 
 if files_conglomerado:
@@ -146,7 +153,8 @@ st.subheader("2) Subir archivo(s) de transacciones a revisar")
 files_revision = st.file_uploader(
     "Selecciona archivo(s) de revisión",
     accept_multiple_files=True,
-    type=["xlsx", "xls"]
+    type=["xlsx", "xls"],
+    key=f"upload_revision_{st.session_state.upload_reset}",
 )
 
 if files_revision:
@@ -173,6 +181,7 @@ if not st.session_state.procesando:
     if st.button("▶ Procesar conciliación", type="primary", width="stretch"):
         st.session_state.procesando = True
         st.session_state.detener_proceso = False
+        st.session_state.resultado_listo = False
         st.rerun()
 else:
     if st.button("⛔ Detener procesamiento", width="stretch"):
@@ -270,30 +279,22 @@ if st.session_state.procesando:
 
         verificar_cancelacion()
         step += 1
-        update_progress(progress, status, eta_box, step, total_steps, "Generando archivo final", inicio)
-        excel = exportar_excel(df_filtrado)
+        update_progress(progress, status, eta_box, step, total_steps, "Generando archivos finales", inicio)
+        excel_resultado = exportar_excel(df_filtrado)
+        excel_conglomerado = exportar_excel(df_cong)
+
+        # Guardar resultados en sesión para que las descargas persistan después del clic
+        st.session_state.excel_resultado = excel_resultado.getvalue()
+        st.session_state.excel_conglomerado = excel_conglomerado.getvalue()
+        st.session_state.metric_totales_revision = int(len(df_completo))
+        st.session_state.metric_resultado_filtrado = int(len(df_filtrado))
+        st.session_state.preview_filtrado = df_filtrado.head(50)
+        st.session_state.resultado_listo = True
 
         progress.empty()
         eta_box.empty()
         status.success("✅ Proceso completado correctamente.")
         st.session_state.procesando = False
-
-        c1, c2 = st.columns(2)
-        with c1:
-            st.metric("Filas totales revisión", len(df_completo))
-        with c2:
-            st.metric("Filas resultado filtrado", len(df_filtrado))
-
-        st.markdown("### Vista previa del resultado filtrado")
-        st.dataframe(df_filtrado.head(50), width="stretch")
-
-        st.download_button(
-            "Descargar resultado filtrado",
-            excel,
-            "resultado_filtrado_conciliacion.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            width="stretch"
-        )
 
         if mostrar_debug:
             with st.expander("Debug del cruce", expanded=False):
@@ -309,3 +310,58 @@ if st.session_state.procesando:
     except Exception as e:
         st.session_state.procesando = False
         st.error(f"Ocurrió un error: {e}")
+
+
+# Bloque de resultados persistente (para poder descargar varias veces)
+if st.session_state.get("resultado_listo"):
+    c1, c2 = st.columns(2)
+    with c1:
+        st.metric(
+            "Filas totales revisión",
+            st.session_state.get("metric_totales_revision", 0),
+        )
+    with c2:
+        st.metric(
+            "Filas resultado filtrado",
+            st.session_state.get("metric_resultado_filtrado", 0),
+        )
+
+    st.markdown("### Vista previa del resultado filtrado")
+    preview = st.session_state.get("preview_filtrado")
+    if preview is not None:
+        st.dataframe(preview, width="stretch")
+
+    if "excel_resultado" in st.session_state and "excel_conglomerado" in st.session_state:
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("resultado_filtrado_conciliacion.xlsx", st.session_state.excel_resultado)
+            zf.writestr("conglomerado_camara.xlsx", st.session_state.excel_conglomerado)
+        zip_buffer.seek(0)
+        st.download_button(
+            "Descargar resultados (resultado filtrado + conglomerado de cámara)",
+            zip_buffer.getvalue(),
+            "conciliacion_resultados.zip",
+            mime="application/zip",
+            width="stretch",
+        )
+
+    if st.button("Volver a empezar", type="secondary", width="stretch"):
+        # Limpiar resultados
+        for key in (
+            "resultado_listo",
+            "excel_resultado",
+            "excel_conglomerado",
+            "metric_totales_revision",
+            "metric_resultado_filtrado",
+            "preview_filtrado",
+        ):
+            st.session_state.pop(key, None)
+        # Limpiar estado de los file_uploader (y liberar memoria de archivos subidos)
+        for key in list(st.session_state.keys()):
+            if key.startswith("upload_conglomerado_") or key.startswith("upload_revision_"):
+                st.session_state.pop(key, None)
+        # Nuevo “ciclo” de uploaders: claves nuevas = cuadros vacíos
+        st.session_state.upload_reset = st.session_state.get("upload_reset", 0) + 1
+        st.session_state.procesando = False
+        st.session_state.detener_proceso = False
+        st.rerun()
