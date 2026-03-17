@@ -1,5 +1,3 @@
-import re
-import zipfile
 from io import BytesIO
 
 import pandas as pd
@@ -8,34 +6,11 @@ from config import HOJAS_OBJETIVO, HEADER_ROW_CONGLOMERADO, HEADER_ROW_REVISION
 from utils import normalizar_columnas, encontrar_columna
 
 
-def _abrir_excel(file):
-    file_bytes = file.getvalue()
-    try:
-        xls = pd.ExcelFile(BytesIO(file_bytes), engine="openpyxl")
-        _ = xls.sheet_names  # forzar parsing para capturar error de hojas ocultas aquí
-        return xls
-    except Exception as e:
-        if "visible" not in str(e).lower():
-            raise
-        # El archivo tiene hojas ocultas: modificar el XML del zip directamente
-        # para hacer visibles todas las hojas, sin pasar por openpyxl
-        buffer_out = BytesIO()
-        with zipfile.ZipFile(BytesIO(file_bytes), "r") as zin:
-            with zipfile.ZipFile(buffer_out, "w", zipfile.ZIP_DEFLATED) as zout:
-                for item in zin.infolist():
-                    data = zin.read(item.filename)
-                    if item.filename == "xl/workbook.xml":
-                        data = re.sub(rb'\s*state="(?:hidden|veryHidden)"', b"", data)
-                    zout.writestr(item, data)
-        buffer_out.seek(0)
-        return pd.ExcelFile(buffer_out, engine="openpyxl")
-
-
 def leer_archivo_conglomerado(file):
     dfs = []
     logs = []
 
-    xls = _abrir_excel(file)
+    xls = pd.ExcelFile(BytesIO(file.getvalue()), engine="calamine")
     logs.append(f"Procesando conglomerado: {file.name}")
 
     for hoja in HOJAS_OBJETIVO:
@@ -45,7 +20,7 @@ def leer_archivo_conglomerado(file):
                 sheet_name=hoja,
                 header=HEADER_ROW_CONGLOMERADO,
                 dtype=str,
-                engine="openpyxl"
+                engine="calamine"
             )
             df = df.dropna(how="all")
             df = normalizar_columnas(df)
@@ -80,13 +55,13 @@ def consolidar_conglomerado(files):
 
 
 def leer_revision(file):
-    xls = _abrir_excel(file)
+    xls = pd.ExcelFile(BytesIO(file.getvalue()), engine="calamine")
     df = pd.read_excel(
         xls,
         sheet_name=xls.sheet_names[0],
         header=HEADER_ROW_REVISION,
         dtype=str,
-        engine="openpyxl"
+        engine="calamine"
     )
     df = df.dropna(how="all")
     df = normalizar_columnas(df)
