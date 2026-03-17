@@ -63,3 +63,27 @@ def aplicar_filtros(df):
     }
 
     return filtrado, debug_filtros
+
+
+def agregar_webtin(df_filtrado, df_completo):
+    """Agrega columna WEBTIN con la cantidad de transacciones por CCI/Nro. Tarjeta Beneficiario.
+
+    El conteo se calcula sobre df_completo filtrado a Aceptado + Transfer. Ordinaria,
+    y luego se cruza con df_filtrado por esa misma columna.
+    """
+    df_filtrado = df_filtrado.copy()
+
+    col_cci = encontrar_columna(df_completo, "CCI / Nro. Tarjeta Beneficiario")
+    col_tipo = encontrar_columna(df_completo, "Tipo de transferencia")
+    col_estado = encontrar_columna(df_completo, "ESTADO CCE")
+
+    mask = (
+        (df_completo[col_tipo].fillna("").astype(str).str.strip() == "Transfer. Ordinaria")
+        & (df_completo[col_estado].fillna("").astype(str).str.strip() == "Aceptado")
+    )
+    conteo = df_completo.loc[mask, col_cci].value_counts()
+
+    col_cci_filtrado = encontrar_columna(df_filtrado, "CCI / Nro. Tarjeta Beneficiario")
+    df_filtrado["WEBTIN"] = df_filtrado[col_cci_filtrado].map(conteo).fillna(0).astype(int)
+
+    return df_filtrado

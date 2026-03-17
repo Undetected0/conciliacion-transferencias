@@ -1,11 +1,12 @@
 import time
 import zipfile
+from datetime import date
 from io import BytesIO
 
 import streamlit as st
 
 from services.lectores import consolidar_conglomerado, consolidar_revision
-from services.conciliacion import agregar_estado, aplicar_filtros
+from services.conciliacion import agregar_estado, aplicar_filtros, agregar_webtin
 from services.exportador import exportar_excel
 from utils import formatear_segundos, encontrar_columna
 
@@ -276,6 +277,7 @@ if st.session_state.procesando:
         step += 1
         update_progress(progress, status, eta_box, step, total_steps, "Aplicando filtros", inicio)
         df_filtrado, debug_filtros = aplicar_filtros(df_completo)
+        df_filtrado = agregar_webtin(df_filtrado, df_completo)
 
         verificar_cancelacion()
         step += 1
@@ -334,13 +336,14 @@ if st.session_state.get("resultado_listo"):
     if "excel_resultado" in st.session_state and "excel_conglomerado" in st.session_state:
         zip_buffer = BytesIO()
         with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("resultado_filtrado_conciliacion.xlsx", st.session_state.excel_resultado)
-            zf.writestr("conglomerado_camara.xlsx", st.session_state.excel_conglomerado)
+            hoy = date.today().strftime("%Y%m%d")
+            zf.writestr(f"resultado_filtrado_conciliacion_{hoy}.xlsx", st.session_state.excel_resultado)
+            zf.writestr(f"conglomerado_camara_{hoy}.xlsx", st.session_state.excel_conglomerado)
         zip_buffer.seek(0)
         st.download_button(
             "Descargar resultados (resultado filtrado + conglomerado de cámara)",
             zip_buffer.getvalue(),
-            "conciliacion_resultados.zip",
+            f"conciliacion_resultados_{hoy}.zip",
             mime="application/zip",
             width="stretch",
         )
