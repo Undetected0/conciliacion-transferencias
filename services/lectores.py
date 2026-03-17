@@ -1,6 +1,7 @@
+import re
+import zipfile
 from io import BytesIO
 
-import openpyxl
 import pandas as pd
 
 from config import HOJAS_OBJETIVO, HEADER_ROW_CONGLOMERADO, HEADER_ROW_REVISION
@@ -14,13 +15,18 @@ def _abrir_excel(file):
     except Exception as e:
         if "visible" not in str(e).lower():
             raise
-        wb = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True, keep_links=False)
-        for sheet in wb.worksheets:
-            sheet.sheet_state = "visible"
-        buffer = BytesIO()
-        wb.save(buffer)
-        buffer.seek(0)
-        return pd.ExcelFile(buffer, engine="openpyxl")
+        # El archivo tiene hojas ocultas: modificar el XML del zip directamente
+        # para hacer visibles todas las hojas, sin pasar por openpyxl
+        buffer_out = BytesIO()
+        with zipfile.ZipFile(BytesIO(file_bytes), "r") as zin:
+            with zipfile.ZipFile(buffer_out, "w", zipfile.ZIP_DEFLATED) as zout:
+                for item in zin.infolist():
+                    data = zin.read(item.filename)
+                    if item.filename == "xl/workbook.xml":
+                        data = re.sub(rb'\s*state="(?:hidden|veryHidden)"', b"", data)
+                    zout.writestr(item, data)
+        buffer_out.seek(0)
+        return pd.ExcelFile(buffer_out, engine="openpyxl")
 
 
 def leer_archivo_conglomerado(file):
