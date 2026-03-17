@@ -11,7 +11,9 @@ from utils import normalizar_columnas, encontrar_columna
 def _abrir_excel(file):
     file_bytes = file.getvalue()
     try:
-        return pd.ExcelFile(BytesIO(file_bytes), engine="openpyxl")
+        xls = pd.ExcelFile(BytesIO(file_bytes), engine="openpyxl")
+        _ = xls.sheet_names  # forzar parsing para capturar error de hojas ocultas aquí
+        return xls
     except Exception as e:
         if "visible" not in str(e).lower():
             raise
