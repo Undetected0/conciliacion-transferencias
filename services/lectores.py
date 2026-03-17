@@ -1,16 +1,33 @@
 from io import BytesIO
 
+import openpyxl
 import pandas as pd
 
 from config import HOJAS_OBJETIVO, HEADER_ROW_CONGLOMERADO, HEADER_ROW_REVISION
 from utils import normalizar_columnas, encontrar_columna
 
 
+def _abrir_excel(file):
+    file_bytes = file.getvalue()
+    try:
+        return pd.ExcelFile(BytesIO(file_bytes), engine="openpyxl")
+    except Exception as e:
+        if "visible" not in str(e).lower():
+            raise
+        wb = openpyxl.load_workbook(BytesIO(file_bytes), data_only=True, keep_links=False)
+        for sheet in wb.worksheets:
+            sheet.sheet_state = "visible"
+        buffer = BytesIO()
+        wb.save(buffer)
+        buffer.seek(0)
+        return pd.ExcelFile(buffer, engine="openpyxl")
+
+
 def leer_archivo_conglomerado(file):
     dfs = []
     logs = []
 
-    xls = pd.ExcelFile(BytesIO(file.getvalue()), engine="openpyxl")
+    xls = _abrir_excel(file)
     logs.append(f"Procesando conglomerado: {file.name}")
 
     for hoja in HOJAS_OBJETIVO:
@@ -55,7 +72,7 @@ def consolidar_conglomerado(files):
 
 
 def leer_revision(file):
-    xls = pd.ExcelFile(BytesIO(file.getvalue()), engine="openpyxl")
+    xls = _abrir_excel(file)
     df = pd.read_excel(
         xls,
         sheet_name=xls.sheet_names[0],
