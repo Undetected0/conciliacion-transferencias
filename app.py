@@ -312,9 +312,7 @@ if st.session_state.procesando:
     except Exception as e:
         import traceback
         st.session_state.procesando = False
-        st.error(f"Ocurrió un error: {e}")
-        with st.expander("Detalle del error (traceback)", expanded=True):
-            st.code(traceback.format_exc())
+        st.error(f"Ocurrió un error: {e}\n\n```\n{traceback.format_exc()}\n```")
 
 
 # Bloque de resultados persistente (para poder descargar varias veces)

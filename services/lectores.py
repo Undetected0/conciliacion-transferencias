@@ -10,7 +10,7 @@ def leer_archivo_conglomerado(file):
     dfs = []
     logs = []
 
-    xls = pd.ExcelFile(BytesIO(file.getvalue()), engine="openpyxl")
+    xls = pd.ExcelFile(BytesIO(file.getvalue()), engine="calamine")
     logs.append(f"Procesando conglomerado: {file.name}")
 
     for hoja in HOJAS_OBJETIVO:
@@ -20,7 +20,7 @@ def leer_archivo_conglomerado(file):
                 sheet_name=hoja,
                 header=HEADER_ROW_CONGLOMERADO,
                 dtype=str,
-                engine="openpyxl"
+                engine="calamine"
             )
             df = df.dropna(how="all")
             df = normalizar_columnas(df)
@@ -55,13 +55,13 @@ def consolidar_conglomerado(files):
 
 
 def leer_revision(file):
-    xls = pd.ExcelFile(BytesIO(file.getvalue()), engine="openpyxl")
+    xls = pd.ExcelFile(BytesIO(file.getvalue()), engine="calamine")
     df = pd.read_excel(
         xls,
         sheet_name=xls.sheet_names[0],
         header=HEADER_ROW_REVISION,
         dtype=str,
-        engine="openpyxl"
+        engine="calamine"
     )
     df = df.dropna(how="all")
     df = normalizar_columnas(df)

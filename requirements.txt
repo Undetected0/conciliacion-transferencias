@@ -2,4 +2,5 @@ streamlit
 pandas
 openpyxl
 pyarrow
+python-calamine
 xlsxwriter
