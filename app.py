@@ -299,13 +299,65 @@ if st.session_state.procesando:
         st.session_state.procesando = False
 
         if mostrar_debug:
-            with st.expander("Debug del cruce", expanded=False):
-                st.write(debug_cruce)
+            with st.expander("🔍 Debug avanzado del cruce", expanded=True):
+                st.markdown("#### 1) Columnas detectadas")
+                st.write({
+                    "Columna usada en REVISIÓN": debug_cruce["col_revision_usada"],
+                    "Columna usada en CONGLOMERADO": debug_cruce["col_conglomerado_usada"],
+                    "Columna de estado usada": debug_cruce["col_estado_usada"],
+                })
 
-            with st.expander("Debug de filtros", expanded=False):
+                st.markdown("#### 2) Volumen")
+                st.write({
+                    "Filas en revisión": debug_cruce["total_revision"],
+                    "Filas con coincidencia": debug_cruce["coincidencias_cruce"],
+                    "Filas sin coincidencia (NO ENCONTRADO)": debug_cruce["sin_coincidencia"],
+                })
+
+                st.markdown("#### 3) Ejemplos de claves CRUDAS (antes de normalizar)")
+                from utils import normalizar_clave_serie
+                col_rev = debug_cruce["col_revision_usada"]
+                col_cong = debug_cruce["col_conglomerado_usada"]
+                muestras_rev_crudas = df_rev[col_rev].dropna().head(5).tolist()
+                muestras_cong_crudas = df_cong[col_cong].dropna().head(5).tolist()
+                st.write("Revisión (crudo):", muestras_rev_crudas)
+                st.write("Conglomerado (crudo):", muestras_cong_crudas)
+
+                st.markdown("#### 4) Ejemplos de claves NORMALIZADAS (después de normalizar)")
+                muestras_rev_norm = normalizar_clave_serie(df_rev[col_rev].dropna().head(5)).tolist()
+                muestras_cong_norm = normalizar_clave_serie(df_cong[col_cong].dropna().head(5)).tolist()
+                st.write("Revisión (normalizado):", muestras_rev_norm)
+                st.write("Conglomerado (normalizado):", muestras_cong_norm)
+
+                st.markdown("#### 5) Intersección real de claves")
+                claves_rev = set(normalizar_clave_serie(df_rev[col_rev].dropna()))
+                claves_cong = set(normalizar_clave_serie(df_cong[col_cong].dropna()))
+                interseccion = claves_rev & claves_cong
+                st.write({
+                    "Claves únicas en revisión": len(claves_rev),
+                    "Claves únicas en conglomerado": len(claves_cong),
+                    "Claves que coinciden": len(interseccion),
+                })
+                if interseccion:
+                    st.write("Ejemplos que SÍ coinciden:", list(interseccion)[:10])
+                else:
+                    st.error("❌ No hay ninguna clave en común. El problema está en el formato de los códigos CCE.")
+                    st.write("Ejemplo revisión vs conglomerado:")
+                    st.write(f"  REV: '{list(claves_rev)[:3]}'")
+                    st.write(f"  CONG: '{list(claves_cong)[:3]}'")
+
+                st.markdown("#### 6) Longitud de claves (para detectar diferencias de formato)")
+                long_rev = df_rev[col_rev].dropna().astype(str).str.strip().str.len()
+                long_cong = df_cong[col_cong].dropna().astype(str).str.strip().str.len()
+                st.write({
+                    "Longitud mín/máx claves revisión": f"{int(long_rev.min())} / {int(long_rev.max())}",
+                    "Longitud mín/máx claves conglomerado": f"{int(long_cong.min())} / {int(long_cong.max())}",
+                })
+
+            with st.expander("🔍 Debug de filtros", expanded=False):
                 st.write(debug_filtros)
 
-            with st.expander("Logs técnicos", expanded=False):
+            with st.expander("📋 Logs técnicos", expanded=False):
                 for log in logs_cong + logs_rev:
                     st.write(log)
 
